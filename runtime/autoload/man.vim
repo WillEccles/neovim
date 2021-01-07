@@ -7,7 +7,6 @@ let s:loaded_man = 1
 
 let s:find_arg = '-w'
 let s:localfile_arg = v:true  " Always use -l if possible. #6683
-let s:section_arg = '-S'
 
 function! man#init() abort
   try
@@ -204,24 +203,19 @@ function! s:get_path(sect, name) abort
   " However, some searches will report matches that are incorrect:
   " man -w strlen may return string.3 followed by strlen.3, and therefore
   " selecting the first would get us the wrong page. Thus, we must find the
-  " first *matching* one.
+  " first matching one.
   "
   " There's yet another special case here. Consider the following:
   " If you run man -w strlen and string.3 comes up first, this is a problem. We
   " should search for a matching named one in the results list.
   " However, if you search for man -w clock_gettime, you will *only* get
   " clock_getres.2, which is the right page. Searching the resuls for
-  " clock_gettime will no longer work. In this case, we should search for the
-  " first one with a matching section.
+  " clock_gettime will no longer work. In this case, we should just use the
+  " first one that was found in the correct section.
   "
-  " Finally, we can avoid relying on -S here (which doesn't work on some
-  " systems, such as using mandoc, which has completely different behavior for
-  " the -S flag) to find those matching b:man_default_sects. Using mandoc, this
-  " will not work at all.
-  "
-  " TODO(willeccles) it might be possible to use -s portably, which can in some
-  " cases let us avoid searching for matching sections.
-  let results = split(s:system(['man', s:find_arg, a:name]))
+  " Finally, we can avoid relying on -S or -s here since they are very
+  " inconsistently supported. Instead, call -w with a section and a name.
+  let results = split(s:system(['man', s:find_arg, a:sect, a:name]))
 
   if empty(results)
     return ''
@@ -229,22 +223,8 @@ function! s:get_path(sect, name) abort
 
   " find any that match the specified name
   let namematches = filter(copy(results), 'fnamemodify(v:val, ":t") =~ a:name')
-  if empty(a:sect)
-    return substitute(get(namematches, 0, results[0]), '\n\+$', '', '')
-  endif
 
-  " find any that are in the right section (I am not sure if the section is
-  " always the extension of a man page, so this may not always work)
-  " TODO(willeccles) it's possible that the section may match incorrectly, such
-  " as .3 matching both .3 and .3p
-  let sectmatches = []
-  if empty(namematches)
-    let sectmatches = filter(results, 'fnamemodify(v:val, ":t") =~ "\\." . a:sect')
-  else
-    let sectmatches = filter(namematches, 'v:val =~ "\\." . a:sect')
-  endif
-
-  return substitute(get(sectmatches, 0, ''), '\n\+$', '', '')
+  return substitute(get(namematches, 0, results[0]), '\n\+$', '', '')
 endfunction
 
 " s:verify_exists attempts to find the path to a manpage
@@ -267,13 +247,15 @@ function! s:verify_exists(sect, name) abort
     " no section specified, so search with b:man_default_sects
     if exists('b:man_default_sects')
       let sects = split(b:man_default_sects, ',')
-      try
-        let results = filter(map(sects, 's:get_path(v:val, a:name)'), '!empty(v:val)')
-        if !empty(results)
-          return results[0]
-        endif
-      catch /^command error (/
-      endtry
+      for sec in sects
+        try
+          let res = s:get_path(sec, a:name)
+          if !empty(res)
+            return res
+          endif
+        catch /^command error (/
+        endtry
+      endfor
     endif
   else
     " try with specified section
@@ -288,13 +270,15 @@ function! s:verify_exists(sect, name) abort
     " try again with b:man_default_sects
     if exists('b:man_default_sects')
       let sects = split(b:man_default_sects, ',')
-      try
-        let results = filter(map(sects, 's:get_path(v:val, a:name)'), '!empty(v:val)')
-        if !empty(results)
-          return results[0]
-        endif
-      catch /^command error (/
-      endtry
+      for sec in sects
+        try
+          let res = s:get_path(sec, a:name)
+          if !empty(res)
+            return res
+          endif
+        catch /^command error (/
+        endtry
+      endfor
     endif
   endif
 
