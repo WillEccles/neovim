@@ -223,8 +223,13 @@ function! s:get_path(sect, name) abort
 
   " find any that match the specified name
   let namematches = filter(copy(results), 'fnamemodify(v:val, ":t") =~ a:name')
+  let sectmatches = []
 
-  return substitute(get(namematches, 0, results[0]), '\n\+$', '', '')
+  if !empty(namematches) && !empty(a:sect)
+    let sectmatches = filter(copy(namematches), 'fnamemodify(v:val, ":e") == a:sect')
+  endif
+
+  return substitute(get(sectmatches, 0, get(namematches, 0, results[0])), '\n\+$', '', '')
 endfunction
 
 " s:verify_exists attempts to find the path to a manpage
